@@ -1,0 +1,1 @@
+simplified version of imx556_demo
