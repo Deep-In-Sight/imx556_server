@@ -15,11 +15,6 @@
 int helperStringToHex(char *string) {
 	int i;
 	sscanf(string, "%X", &i);
-#ifndef SONY
-	if (i < 0x00 || i > 0xFF) {
-		return -1;
-	}
-#endif
 	return i;
 }
 
