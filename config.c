@@ -1,6 +1,6 @@
+#include <getPhaseMapAccel.h>
 #include "config.h"
 #include "i2c.h"
-#include "pru.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,9 +23,13 @@ int configInit(int deviceAddress) {
 	if (status < 0)
 		return -1;
 
-	status = pruInit(deviceAddress);
+	status = accelInit(deviceAddress);
 	if (status < 0)
 		return -1;
+
+	accelSetMode(MODE_PHASE);
+	accelSetOffset(0);
+	accelEnableAmplitudeScale(0);
 
 	return 0;
 }

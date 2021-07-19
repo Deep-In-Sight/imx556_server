@@ -1,7 +1,6 @@
 
 #include "server.h"
 #include "api.h"
-#include "pru.h"
 #include "helper.h"
 
 #include <stdio.h>
@@ -9,6 +8,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <getPhaseMapAccel.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <string.h>
@@ -33,7 +33,7 @@ struct sockaddr_in serv_addr, cli_addr;
 
 static unsigned int deviceAddress;
 unsigned char* pData;
-int gSock = 0;
+static int gSock = 0;
 
 /*!
  Starts TCP Server for communication with client application
@@ -161,14 +161,25 @@ void handleRequest(int sock) {
 		}
 		send(sock, &answer, sizeof(int16_t), MSG_NOSIGNAL);
 		free(values);
-	} else if (strcmp(stringArray[0], "getRawData") == 0 && !argumentCount) {
+	} else if (strcmp(stringArray[0], "getFrame") == 0 && !argumentCount) {
 		uint16_t *pMem = NULL;
 //		for (int i = 0; i < 300; i++) {
-			int dataSize = 2 * pruGetImage(&pMem);
+			int dataSize = 2 * accelGetImage(&pMem);
 //			printf("%s start sending %d bytes\n", __FUNCTION__, dataSize);
 			send(sock, pMem, dataSize, MSG_NOSIGNAL);
 //			printf("%s finished sending %d bytes\n", __FUNCTION__, dataSize);
 //		}
+	} else if (strcmp(stringArray[0], "setMode") == 0 && argumentCount == 1) {
+		int mode = helperStringToHex(stringArray[1]);
+		answer = apiSetMode(mode);
+		send(sock, &answer, sizeof(int16_t), MSG_NOSIGNAL);
+	} else if (strcmp(stringArray[0], "setPhaseOffset") == 0 && argumentCount == 1) {
+		int offset = helperStringToInteger(stringArray[1]);
+		printf("Setting offset to %d\n", offset);
+		apiSetPhaseOffset(offset);
+	} else if (strcmp(stringArray[0], "setAmplitudeScale") == 0 && argumentCount == 1) {
+		int enable = helperStringToInteger(stringArray[1]);
+		apiEnableAmplitudeScale(enable);
 	}
 	// unknown command
 	else {
@@ -192,4 +203,5 @@ void signalHandler(int sig) {
 void serverSend(void* buffer, size_t size) {
 	send(gSock, buffer, size, MSG_NOSIGNAL);
 }
+
 

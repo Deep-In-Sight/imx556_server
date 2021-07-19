@@ -1,31 +1,35 @@
-#include "pru.h"
 #include "i2c.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <getPhaseMapAccel.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <string.h>
 #include <sys/types.h>
 #include <stdint.h>
-#include "xdma.h"
+#include "xgetphasemap.h"
 
 #define FRAME_WIDTH 640
 #define FRAME_HEIGHT 480
 #define DCS_NUM 4
+#define DCS_SZ (640*480)
 
-static XDma dma;
+static XGetphasemap phaseAccel;
+enum IMAGE_MODE imageMode = MODE_RAW;
+int scaleMode = 0;
+int frameIdx = 0;
 
 /// \addtogroup pru
 /// @{
-#define PRU_DBG
-#ifdef PRU_DBG
-#define PRU_ENTER printf("Enter %s\n", __FUNCTION__)
-#define PRU_EXIT printf("Exit %s\n", __FUNCTION__)
+#define ACCEL_DBG
+#ifdef ACCEL_DBG
+#define ACCEL_ENTER printf("Enter %s\n", __FUNCTION__)
+#define ACCEL_EXIT printf("Exit %s\n", __FUNCTION__)
 #else
-#define PRU_ENTER
-#define PRU_EXIT
+#define ACCEL_ENTER
+#define ACCEL_EXIT
 #endif
 
 static int fd_mem;
@@ -37,7 +41,7 @@ static unsigned char* pData;
 
 static unsigned int deviceAddress;
 
-int pruInit(const unsigned int addressOfDevice) {
+int accelInit(const unsigned int addressOfDevice) {
 
 	pData = (unsigned char*) malloc(1 * sizeof(unsigned char));
 	pData[0] = 0x01;
@@ -48,7 +52,7 @@ int pruInit(const unsigned int addressOfDevice) {
 	char line[str_len];
 
 	int Status;
-	Status = XDma_Initialize(&dma, "dma");
+	Status = XGetphasemap_Initialize(&phaseAccel, "dma");
 	if (Status != XST_SUCCESS) {
 		printf("Dma initialize failed\n");
 		return -1;
@@ -75,14 +79,6 @@ int pruInit(const unsigned int addressOfDevice) {
 	fclose(fd_map);
 	ddr_map_size = (unsigned int) strtoll(line, NULL, 0);
 
-	size_t framesize = DCS_NUM * FRAME_HEIGHT * FRAME_WIDTH * 2;
-	XDma_Set_s2mm_offset(&dma, ddr_map_base_addr);
-	XDma_Set_len(&dma, framesize);
-
-	//put sensor on streaming mode, need to start dma to consume the first frame
-	XDma_Start(&dma);
-	i2c(deviceAddress, 'w', 0x1001, 1, &pData);
-
 	/* Open the file for the memory device: */
 	fd_mem = open("/dev/mem", O_RDWR | O_SYNC); //slow
 //			fd_mem = open("/dev/mem", O_RDWR); // horizontal bars in picture :(
@@ -107,40 +103,89 @@ int pruInit(const unsigned int addressOfDevice) {
 		return -1;
 	}
 
+	printf("Memory mapped successfully from %x to %x\n", (uint32_t)ddr_map_base_addr, (uint32_t)pMem);
+
+	XGetphasemap_Set_frame02_offset(&phaseAccel, ddr_map_base_addr);
+	XGetphasemap_Set_frame13_offset(&phaseAccel, ddr_map_base_addr + DCS_SZ*2*sizeof(uint16_t));
+
+	//put sensor on streaming mode, need to start dma to consume the first frame
+	XGetphasemap_Start(&phaseAccel);
+	i2c(deviceAddress, 'w', 0x1001, 1, &pData);
+
 	return 0;
 }
 
+int accelSetMode(int mode) {
+	if (mode > MODE_NUM) {
+		return -1;
+	} else {
+		imageMode = (IMAGE_MODE)mode;
 
-int pruGetImage(uint16_t **data) {
+		uint32_t regCtrl = XGetphasemap_Get_regCtrl(&phaseAccel);
+		regCtrl &= 0xFFFFFFFC;
+		regCtrl |= mode;
+		XGetphasemap_Set_regCtrl(&phaseAccel, regCtrl);
+		return 0;
+	}
+}
+
+void accelSetOffset(uint16_t offset) {
+	uint32_t regCtrl = XGetphasemap_Get_regCtrl(&phaseAccel);
+	regCtrl &= 0x0000FFFF;
+	regCtrl |= (((uint32_t)offset) << 16);
+	XGetphasemap_Set_regCtrl(&phaseAccel, regCtrl);
+}
+
+void accelEnableAmplitudeScale(int scale_en) {
+	scaleMode = scale_en;
+	uint32_t SCALE_EN_BIT = (0x01 << 2);
+	uint32_t regCtrl = XGetphasemap_Get_regCtrl(&phaseAccel);
+	if (scale_en) {
+		regCtrl |= SCALE_EN_BIT;
+	} else {
+		regCtrl &= ~SCALE_EN_BIT;
+	}
+	XGetphasemap_Set_regCtrl(&phaseAccel, regCtrl);
+}
+
+int accelGetImage(uint16_t **data) {
 	//double elapsedTime;
 	//struct timeval tv1, tv2;
 	//gettimeofday(&tv1, NULL);
 
-	PRU_ENTER;
+	ACCEL_ENTER;
 
-	XDma_Start(&dma);
+	XGetphasemap_Start(&phaseAccel);
 	i2c(deviceAddress, 'w', 0x2100, 1, &pData);
-	usleep(10000);
 
-//	FILE *fp;
-//	fp = fopen("frame.gray", "w");
-//	if (!fp) {
-//		printf("Cannot save frame\n");
-//	}
-//	fwrite(pMem, nRowsPerHalf * nHalves * nCols * nDCS, 1, fp);
-//	fclose(fp);
-//	while(!XDma_IsDone(&dma)){
+//	while(!XGetphasemap_IsDone(&phaseAccel)){
 //		//wastefully spending time doing nothing here
 //	}
-	PRU_EXIT;
+
 
 	//gettimeofday(&tv2, NULL);
 	//elapsedTime = (double)(tv2.tv_sec - tv1.tv_sec) + (double)(tv2.tv_usec - tv1.tv_usec)/1000000.0;
 	//printf("seconds elapsed in ms = %2.4f\n", elapsedTime *1000.0);
 
-	*data = pMem;
-	int size = FRAME_WIDTH * FRAME_HEIGHT * DCS_NUM;
+	int size, offset;
 
+	if (imageMode == MODE_RAW) {
+		size = 4 * DCS_SZ;
+		offset = 0;
+	} else if (imageMode == MODE_AMP) {
+		size = DCS_SZ;
+		if (scaleMode) {
+			offset = DCS_SZ*4*sizeof(uint16_t);
+		} else {
+			offset = DCS_SZ*3*sizeof(uint16_t);
+		}
+	} else if (imageMode == MODE_PHASE) {
+		size = DCS_SZ;
+		offset = DCS_SZ*3*sizeof(uint16_t);
+	}
+	*data = (uint16_t*)(((unsigned int)pMem) + offset);
+
+	ACCEL_EXIT;
 	return size;		//number of pixels
 }
 
@@ -148,7 +193,7 @@ int pruGetImage(uint16_t **data) {
  Releases data used by the PRU
  @return On success, 0 is returned. On error, -1 is returned.
  */
-int pruRelease() {	//free???
+int accelRelease() {	//free???
 	free(pData);
 
 	if (munlock(pMem, ddr_map_size) != 0) {
@@ -164,7 +209,7 @@ int pruRelease() {	//free???
 		return -1;
 	}
 
-	XDma_Release(&dma);
+	XGetphasemap_Release(&phaseAccel);
 
 	return 0;
 }

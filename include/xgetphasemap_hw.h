@@ -21,20 +21,25 @@
 //        bit 0  - ap_done (COR/TOW)
 //        bit 1  - ap_ready (COR/TOW)
 //        others - reserved
-// 0x10 : Data signal of s2mm_offset
-//        bit 31~0 - s2mm_offset[31:0] (Read/Write)
+// 0x10 : Data signal of regCtrl
+//        bit 31~0 - regCtrl[31:0] (Read/Write)
 // 0x14 : reserved
-// 0x18 : Data signal of len
-//        bit 31~0 - len[31:0] (Read/Write)
+// 0x18 : Data signal of frame02_offset
+//        bit 31~0 - frame02_offset[31:0] (Read/Write)
 // 0x1c : reserved
+// 0x20 : Data signal of frame13_offset
+//        bit 31~0 - frame13_offset[31:0] (Read/Write)
+// 0x24 : reserved
 // (SC = Self Clear, COR = Clear on Read, TOW = Toggle on Write, COH = Clear on Handshake)
 
-#define XDMA_CONTROL_ADDR_AP_CTRL          0x00
-#define XDMA_CONTROL_ADDR_GIE              0x04
-#define XDMA_CONTROL_ADDR_IER              0x08
-#define XDMA_CONTROL_ADDR_ISR              0x0c
-#define XDMA_CONTROL_ADDR_S2MM_OFFSET_DATA 0x10
-#define XDMA_CONTROL_BITS_S2MM_OFFSET_DATA 32
-#define XDMA_CONTROL_ADDR_LEN_DATA         0x18
-#define XDMA_CONTROL_BITS_LEN_DATA         32
+#define XGETPHASEMAP_CONTROL_ADDR_AP_CTRL             0x00
+#define XGETPHASEMAP_CONTROL_ADDR_GIE                 0x04
+#define XGETPHASEMAP_CONTROL_ADDR_IER                 0x08
+#define XGETPHASEMAP_CONTROL_ADDR_ISR                 0x0c
+#define XGETPHASEMAP_CONTROL_ADDR_REGCTRL_DATA        0x10
+#define XGETPHASEMAP_CONTROL_BITS_REGCTRL_DATA        32
+#define XGETPHASEMAP_CONTROL_ADDR_FRAME02_OFFSET_DATA 0x18
+#define XGETPHASEMAP_CONTROL_BITS_FRAME02_OFFSET_DATA 32
+#define XGETPHASEMAP_CONTROL_ADDR_FRAME13_OFFSET_DATA 0x20
+#define XGETPHASEMAP_CONTROL_BITS_FRAME13_OFFSET_DATA 32
 

@@ -1,3 +1,4 @@
+#include <getPhaseMapAccel.h>
 #include "api.h"
 #include "i2c.h"
 #include <stdio.h>
@@ -52,6 +53,25 @@ int16_t apiWriteRegister(const int registerAddress, const int nBytes, unsigned c
 	i2c(deviceAddress, 'w', registerAddress, nBytes, &values);
 	API_EXIT;
 	return nBytes;
+}
+
+int apiSetMode(int mode) {
+	API_ENTER;
+	int rc = accelSetMode(mode);
+	API_EXIT;
+	return rc;
+}
+
+void apiSetPhaseOffset(uint16_t offset) {
+	API_ENTER;
+	accelSetOffset(offset);
+	API_EXIT;
+}
+
+void apiEnableAmplitudeScale(int scale_en) {
+	API_ENTER;
+	accelEnableAmplitudeScale(scale_en);
+	API_EXIT;
 }
 
 int16_t apiTest(int val){
