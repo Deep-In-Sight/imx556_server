@@ -12,6 +12,7 @@ enum IMAGE_MODE {
 };
 
 int accelInit(const unsigned int addressOfDevice);
+int accelGetBufferDepth();
 int accelSetMode(int mode);
 void accelSetOffset(uint16_t offset);
 void accelEnableAmplitudeScale(int scale_en);

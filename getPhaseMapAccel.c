@@ -8,38 +8,58 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/syscall.h>
+#include <pthread.h>
 #include <stdint.h>
 #include "xgetphasemap.h"
+#include "profile.h"
+#include "queue.h"
 
 #define FRAME_WIDTH 640
 #define FRAME_HEIGHT 480
 #define DCS_NUM 4
 #define DCS_SZ (640*480)
+#define FRAME_SZ (640*480*2*5)
+#define BUFFER_DEPTH 2
 
 static XGetphasemap phaseAccel;
-enum IMAGE_MODE imageMode = MODE_RAW;
-int scaleMode = 0;
-int frameIdx = 0;
+static enum IMAGE_MODE imageMode = MODE_RAW;
+static int scaleMode = 0;
+
+static int autoTrigger = 0;
 
 /// \addtogroup pru
 /// @{
-#define ACCEL_DBG
+//#define ACCEL_DBG
 #ifdef ACCEL_DBG
 #define ACCEL_ENTER printf("Enter %s\n", __FUNCTION__)
 #define ACCEL_EXIT printf("Exit %s\n", __FUNCTION__)
+#define ACCEL_LINE printf("%s at %d\n", __FUNCTION__, __LINE__)
 #else
 #define ACCEL_ENTER
 #define ACCEL_EXIT
+#define ACCEL_LINE
 #endif
 
 static int fd_mem;
 static unsigned int ddr_map_base_addr;
-static unsigned ddr_map_size;
+static unsigned int ddr_map_size;
+static unsigned int buffer_depth;
 static uint16_t* pMem;
 static uint32_t* pMem32;
 static unsigned char* pData;
 
 static unsigned int deviceAddress;
+
+static uint32_t* pMonitor = NULL;
+
+void printMonitor() {
+	printf("Valid count: %d\n", pMonitor[0]);
+	printf("Last count: %d\n", pMonitor[1]);
+	printf("User count: %d\n", pMonitor[2]);
+	printf("Ready count: %d\n", pMonitor[3]);
+}
+
 
 int accelInit(const unsigned int addressOfDevice) {
 
@@ -52,7 +72,7 @@ int accelInit(const unsigned int addressOfDevice) {
 	char line[str_len];
 
 	int Status;
-	Status = XGetphasemap_Initialize(&phaseAccel, "dma");
+	Status = XGetphasemap_Initialize(&phaseAccel, "getPhaseMap");
 	if (Status != XST_SUCCESS) {
 		printf("Dma initialize failed\n");
 		return -1;
@@ -78,6 +98,13 @@ int accelInit(const unsigned int addressOfDevice) {
 	fflush(stdin);
 	fclose(fd_map);
 	ddr_map_size = (unsigned int) strtoll(line, NULL, 0);
+#ifdef BUFFER_DEPTH
+	buffer_depth = BUFFER_DEPTH;
+#else
+	buffer_depth = ddr_map_size / FRAME_SZ;
+#endif
+	printf("Initialized tof accelerator with buffer depth: %d\n", buffer_depth);
+
 
 	/* Open the file for the memory device: */
 	fd_mem = open("/dev/mem", O_RDWR | O_SYNC); //slow
@@ -103,16 +130,51 @@ int accelInit(const unsigned int addressOfDevice) {
 		return -1;
 	}
 
+	pMonitor = (uint32_t*)mmap(0, 4*sizeof(uint32_t), PROT_WRITE | PROT_READ, MAP_SHARED, fd_mem,
+			0x44a00000);
+	if ((pMonitor) == MAP_FAILED) {
+		perror("\x1b[31m" "Failed to map the device\n." "\x1b[0m");
+		close(fd_mem);
+		return -1;
+	}
+
+	if (mlock(pMonitor, 16) != 0) { // Makes sure that the used pages stay in the memory.
+		perror("\x1b[31m" "mlock failed" "\x1b[0m");
+		close(fd_mem);
+		return -1;
+	}
+
 	printf("Memory mapped successfully from %x to %x\n", (uint32_t)ddr_map_base_addr, (uint32_t)pMem);
+	printf("getPhaseMap monitor memory mapped successfully from %x to %x\n", (uint32_t)0x44a00000, (uint32_t)pMonitor);
 
 	XGetphasemap_Set_frame02_offset(&phaseAccel, ddr_map_base_addr);
 	XGetphasemap_Set_frame13_offset(&phaseAccel, ddr_map_base_addr + DCS_SZ*2*sizeof(uint16_t));
+	XGetphasemap_InterruptGlobalEnable(&phaseAccel);
+	XGetphasemap_InterruptEnable(&phaseAccel, XGETPHASEMAP_CONTROL_INTERRUPTS_DONE_MASK);
+
 
 	//put sensor on streaming mode, need to start dma to consume the first frame
 	XGetphasemap_Start(&phaseAccel);
 	i2c(deviceAddress, 'w', 0x1001, 1, &pData);
 
+	ACCEL_LINE;
+	XGetphasemap_IsDonePoll(&phaseAccel, 50);
+
+	printMonitor();
+
 	return 0;
+}
+
+void accelSetVideoMode(int isVideo) {
+	autoTrigger = isVideo;
+
+	if (isVideo) {
+		pData[0] = (0x01 << 3);
+	} else {
+		pData[0] = 0;
+	}
+
+	i2c(deviceAddress, 'w', 0x2100, 1, &pData);
 }
 
 int accelSetMode(int mode) {
@@ -148,45 +210,92 @@ void accelEnableAmplitudeScale(int scale_en) {
 	XGetphasemap_Set_regCtrl(&phaseAccel, regCtrl);
 }
 
+void getNextFrameSlot(uint16_t** phys, uint32_t* virt) {
+	static int frameCnt = 0;
+
+	uint32_t buffer_base_virt = (uint32_t) pMem;
+	uint32_t buffer_base_phys = ddr_map_base_addr;
+
+	buffer_base_virt = buffer_base_virt + FRAME_SZ * frameCnt;
+	buffer_base_phys = buffer_base_phys + FRAME_SZ * frameCnt;
+	frameCnt = (frameCnt + 1) % buffer_depth;
+
+	*phys = (uint16_t*) buffer_base_virt;
+	*virt = buffer_base_phys;
+}
+
 int accelGetImage(uint16_t **data) {
-	//double elapsedTime;
-	//struct timeval tv1, tv2;
-	//gettimeofday(&tv1, NULL);
+	uint16_t* frameVirtAddr = NULL;
+	uint32_t framePhysAddr;
+	pid_t tid = syscall(__NR_gettid);
+	static int icount_last = 0;
+	int icount = 0;
 
 	ACCEL_ENTER;
 
+	__TIC__(GET_FRAME)
+//	printMonitor();
+
+	getNextFrameSlot(&frameVirtAddr, &framePhysAddr);
+
+	XGetphasemap_Set_frame02_offset(&phaseAccel, framePhysAddr);
+	XGetphasemap_Set_frame13_offset(&phaseAccel, framePhysAddr + DCS_SZ*2*sizeof(uint16_t));
+//	XGetphasemap_InterruptEnable(&phaseAccel, XGETPHASEMAP_CONTROL_INTERRUPTS_DONE_MASK);
+//	XGetphasemap_InterruptClear(&phaseAccel, XGETPHASEMAP_CONTROL_INTERRUPTS_DONE_MASK);
+//	usleep(1000);
+
 	XGetphasemap_Start(&phaseAccel);
+//	if (!autoTrigger) {
+//		pData[0] = 0x01;
+//		i2c(deviceAddress, 'w', 0x2100, 1, &pData);
+//	}
+	pData[0] = 0x01;
 	i2c(deviceAddress, 'w', 0x2100, 1, &pData);
 
 //	while(!XGetphasemap_IsDone(&phaseAccel)){
 //		//wastefully spending time doing nothing here
+//		printf("[TID %d] Sensor not done yet\n", tid);
 //	}
 
+//	ACCEL_LINE;
 
-	//gettimeofday(&tv2, NULL);
-	//elapsedTime = (double)(tv2.tv_sec - tv1.tv_sec) + (double)(tv2.tv_usec - tv1.tv_usec)/1000000.0;
-	//printf("seconds elapsed in ms = %2.4f\n", elapsedTime *1000.0);
+	XGetphasemap_IsDonePoll(&phaseAccel, 30000);
 
-	int size, offset;
+//	int err = read(phaseAccel.uio_fd, &icount, 4);
+//	if (err != 4) {
+//		printf("interrupt wait failed\n");
+//	}
+//	if (icount > icount_last) {
+//		printf("Received %d interrupts\n", icount - icount_last);
+//		icount_last = icount;
+//	}
+
+	int size, buffer_offset;
 
 	if (imageMode == MODE_RAW) {
 		size = 4 * DCS_SZ;
-		offset = 0;
+		buffer_offset = 0;
 	} else if (imageMode == MODE_AMP) {
 		size = DCS_SZ;
 		if (scaleMode) {
-			offset = DCS_SZ*4*sizeof(uint16_t);
+			buffer_offset = DCS_SZ*4;
 		} else {
-			offset = DCS_SZ*3*sizeof(uint16_t);
+			buffer_offset = DCS_SZ*3;
 		}
 	} else if (imageMode == MODE_PHASE) {
 		size = DCS_SZ;
-		offset = DCS_SZ*3*sizeof(uint16_t);
+		buffer_offset = DCS_SZ*3;
 	}
-	*data = (uint16_t*)(((unsigned int)pMem) + offset);
+	*data = frameVirtAddr + buffer_offset;
 
+//	printMonitor();
+	__TOC__(GET_FRAME)
 	ACCEL_EXIT;
 	return size;		//number of pixels
+}
+
+int accelGetBufferDepth() {
+	return buffer_depth;
 }
 
 /*!

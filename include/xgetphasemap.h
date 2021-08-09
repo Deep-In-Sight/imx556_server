@@ -45,6 +45,7 @@ typedef struct {
 typedef struct {
     u64 Control_BaseAddress;
     u32 IsReady;
+    u32 uio_fd;
 } XGetphasemap;
 
 typedef u32 word_type;
@@ -82,6 +83,7 @@ int XGetphasemap_Release(XGetphasemap *InstancePtr);
 
 void XGetphasemap_Start(XGetphasemap *InstancePtr);
 u32 XGetphasemap_IsDone(XGetphasemap *InstancePtr);
+void XGetphasemap_IsDonePoll(XGetphasemap *InstancePtr, int msec_timeout);
 u32 XGetphasemap_IsIdle(XGetphasemap *InstancePtr);
 u32 XGetphasemap_IsReady(XGetphasemap *InstancePtr);
 void XGetphasemap_EnableAutoRestart(XGetphasemap *InstancePtr);

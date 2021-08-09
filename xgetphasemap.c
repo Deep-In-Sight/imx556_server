@@ -4,6 +4,10 @@
 // ==============================================================
 /***************************** Include Files *********************************/
 #include "xgetphasemap.h"
+#include <poll.h>
+#include <stdio.h>
+
+//#define PHASE_DBG
 
 /************************** Function Implementation *************************/
 #ifndef __linux__
@@ -36,6 +40,69 @@ u32 XGetphasemap_IsDone(XGetphasemap *InstancePtr) {
 
     Data = XGetphasemap_ReadReg(InstancePtr->Control_BaseAddress, XGETPHASEMAP_CONTROL_ADDR_AP_CTRL);
     return (Data >> 1) & 0x1;
+}
+
+#define PRINT_POLL(revents, flag) if (revents & flag){printf("%s event polled\n", #flag);}
+void XGetphasemap_IsDonePoll(XGetphasemap *InstancePtr, int msec_timeout) {
+    u32 Data;
+    static u32 Data_last = 0;
+    u32 uio_fd = InstancePtr->uio_fd;
+    u32 isr;
+
+    struct pollfd fds = {
+    	.fd = uio_fd,
+		.events = POLLIN,
+    };
+
+    Xil_AssertNonvoid(InstancePtr != NULL);
+    Xil_AssertNonvoid(InstancePtr->IsReady == XIL_COMPONENT_IS_READY);
+
+    //wait for interrupt
+    int ret = poll(&fds, 1, msec_timeout);
+
+    if (ret < 0) {
+    	perror("poll() failed");
+    	return;
+//    	close(uio_fd);
+//    	exit(EXIT_FAILURE);
+    } else if (ret == 0) {
+    	perror("poll(0 timed out");
+    	return;
+    }
+
+#ifdef PHASE_DBG
+    u16 revents = fds.revents;
+    PRINT_POLL(revents, POLLIN);
+    PRINT_POLL(revents, POLLERR);
+    PRINT_POLL(revents, POLLHUP);
+    PRINT_POLL(revents, POLLNVAL);
+#endif
+
+    ret = read(uio_fd, &Data, sizeof(Data));
+    if (ret != 4) {
+    	printf("UIO read failed\b=n");
+    }
+
+#ifdef PHASE_DBG
+    printf("Data read: %d\n", Data);
+    if (Data > Data_last) {
+    	Data_last = Data;
+    	printf("New interrupt...\n");
+    } else {
+    	printf("Weird +___+ ....\n");
+    }
+#endif
+
+    isr = XGetphasemap_ReadReg(InstancePtr->Control_BaseAddress, XGETPHASEMAP_CONTROL_ADDR_ISR);
+//    printf("ISR = %d\n", isr);
+    if (isr & XGETPHASEMAP_CONTROL_INTERRUPTS_DONE_MASK) {
+    	//write 1 to toggle to 0
+    	XGetphasemap_WriteReg(InstancePtr->Control_BaseAddress, XGETPHASEMAP_CONTROL_ADDR_ISR, XGETPHASEMAP_CONTROL_INTERRUPTS_DONE_MASK);
+    }
+
+    //re-enable uio driver irq
+    Data = 0x01;
+    write(uio_fd, &Data, sizeof(u32));
 }
 
 u32 XGetphasemap_IsIdle(XGetphasemap *InstancePtr) {

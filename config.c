@@ -45,7 +45,14 @@ int sony_loadRegisters(char* filename, const int deviceAddress) {
 	configFile = fopen(filename, "r");
 	if (!configFile) {
 		printf("Cannot open %s to read config\n", filename);
-		return -1;
+		char cwd[256];
+		if (getcwd(cwd, sizeof(cwd)) != NULL) {
+			printf("Current working dir: %s\n", cwd);
+		} else {
+			perror("getcwd() error");
+			return 1;
+		}
+		exit(-1);
 	}
 
 	while (fgets(line, sizeof(line), configFile)) {

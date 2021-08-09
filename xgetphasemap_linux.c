@@ -127,6 +127,7 @@ int XGetphasemap_Initialize(XGetphasemap *InstancePtr, const char* InstanceName)
     assert(InstancePtr->Control_BaseAddress);
 
     InstancePtr->IsReady = XIL_COMPONENT_IS_READY;
+    InstancePtr->uio_fd = InfoPtr->uio_fd;
 
     return XST_SUCCESS;
 }
@@ -140,6 +141,7 @@ int XGetphasemap_Release(XGetphasemap *InstancePtr) {
     munmap((void*)InstancePtr->Control_BaseAddress, InfoPtr->maps[0].size);
 
     close(InfoPtr->uio_fd);
+    InstancePtr->uio_fd = -1;
 
     return XST_SUCCESS;
 }

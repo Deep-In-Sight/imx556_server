@@ -22,6 +22,25 @@
 #include <signal.h>
 #include <stdbool.h>
 
+#include "queue.h"
+#include "profile.h"
+
+auto start_time = std::chrono::steady_clock::now();
+auto end_time = std::chrono::steady_clock::now();
+
+typedef enum {
+	MODE_VIDEO = 0,
+	MODE_PICTURE
+} IMAGING_MODE;
+
+static pthread_t imageThread;
+static IMAGING_MODE gImagingMode = MODE_PICTURE;
+static int gVideoRunning = 0;
+static int gVideoStopped = 1;
+
+#ifdef THREADSAFE_QUEUE
+static SafeQueue<frame_desc_t>* q;
+#endif
 
 void handleRequest(int sock);
 void signalHandler(int sig);
@@ -35,6 +54,44 @@ static unsigned int deviceAddress;
 unsigned char* pData;
 static int gSock = 0;
 
+void* imagingThread(void*){
+	uint16_t* frameAddr=NULL;
+	gVideoStopped = 0;
+	frame_desc_t desc;
+	uint32_t dataSize = 0;
+
+	while(gVideoRunning){
+		__TIC_SUM__(GET_DATA)
+			dataSize = 2 * accelGetImage(&frameAddr);
+		__TOC_SUM__(GET_DATA)
+		desc.addr = frameAddr;
+		desc.size = dataSize;
+#ifdef THREADSAFE_QUEUE
+		q->enqueue(desc);
+#else
+		enqueue(desc);
+#endif
+	};
+
+	gVideoStopped = 1;
+	printf("imagingThread: gVideoStopped = %d\n", gVideoStopped);	//TODO remove
+}
+
+void serverStopThread() {
+	gVideoRunning = 0;
+	frame_desc_t e;
+
+	//in case thread is still waiting to enqueue lasst frame
+	if (isQueueFull()){
+		dequeue(&e);
+	}
+	pthread_join(imageThread, NULL);
+#ifdef THREADSAFE_QUEUE
+	delete q;
+#else
+	queueDestroy();
+#endif
+}
 /*!
  Starts TCP Server for communication with client application
  @param addressOfDevice i2c address of the chip (default 0x20)
@@ -127,10 +184,11 @@ void handleRequest(int sock) {
 		if (nBytes > 0 && registerAddress >= 0) {
 			values = (unsigned char*)malloc(nBytes * sizeof(unsigned char));
 			int16_t responseValues[nBytes];
-			apiReadRegister(registerAddress, nBytes, values, deviceAddress);
+			apiReadRegister(registerAddress, nBytes, &values, deviceAddress);
 			for (v = 0; v < nBytes; v++) {
 				responseValues[v] = values[v];
 			}
+			printf("reg value: %d\n", responseValues[0]);
 			send(sock, responseValues, nBytes * sizeof(int16_t), MSG_NOSIGNAL);
 			free(values);
 		} else {
@@ -155,20 +213,48 @@ void handleRequest(int sock) {
 
 		if (registerAddress > 0 && ok > 0) {
 			answer = apiWriteRegister(registerAddress, argumentCount - 1,
-					values, deviceAddress);
+					&values, deviceAddress);
 		} else {
 			answer = -1;
 		}
 		send(sock, &answer, sizeof(int16_t), MSG_NOSIGNAL);
 		free(values);
 	} else if (strcmp(stringArray[0], "getFrame") == 0 && !argumentCount) {
-		uint16_t *pMem = NULL;
-//		for (int i = 0; i < 300; i++) {
+		frame_desc_t desc;
+		uint16_t* pMem = NULL;
+
+		if (gImagingMode == MODE_VIDEO) {
+			if (gVideoRunning == 0) {
+				gVideoRunning = 1;
+				int buffer_depth = accelGetBufferDepth();
+#ifdef THREADSAFE_QUEUE
+				q = new SafeQueue<frame_desc_t>();
+#else
+				queueInit(buffer_depth);
+#endif
+				pthread_create(&imageThread, NULL, (void*(*)(void*))imagingThread, NULL);
+			}
+
+			//send 10 frames at a time ->> increase frame rate and reduce times on getFrame command
+			for (int i = 0; i < 10; i++) {
+			//block until there is data to send
+#ifdef THREADSAFE_QUEUE
+				desc = q->dequeue();
+#else
+				dequeue(&desc);
+#endif
+				__TIC_SUM__(SOCKET_SEND)
+				send(sock, desc.addr, desc.size, MSG_NOSIGNAL);
+				__TOC_SUM__(SOCKET_SEND)
+			}
+		} else {
+			__TIC__(GET_DATA)
 			int dataSize = 2 * accelGetImage(&pMem);
-//			printf("%s start sending %d bytes\n", __FUNCTION__, dataSize);
+			__TOC__(GET_DATA)
+			__TIC__(SOCKET_SEND)
 			send(sock, pMem, dataSize, MSG_NOSIGNAL);
-//			printf("%s finished sending %d bytes\n", __FUNCTION__, dataSize);
-//		}
+			__TOC__(SOCKET_SEND)
+		}
 	} else if (strcmp(stringArray[0], "setMode") == 0 && argumentCount == 1) {
 		int mode = helperStringToHex(stringArray[1]);
 		answer = apiSetMode(mode);
@@ -180,6 +266,16 @@ void handleRequest(int sock) {
 	} else if (strcmp(stringArray[0], "setAmplitudeScale") == 0 && argumentCount == 1) {
 		int enable = helperStringToInteger(stringArray[1]);
 		apiEnableAmplitudeScale(enable);
+	} else if (strcmp(stringArray[0], "startVideo") == 0 && !argumentCount) {
+		__TIC_GLOBAL__(VIDEO)
+		gImagingMode = MODE_VIDEO;
+		send(sock, &gImagingMode, sizeof(int16_t), MSG_NOSIGNAL);
+
+	}else if (strcmp(stringArray[0], "stopVideo") == 0 && !argumentCount) {
+		serverStopThread();
+		gImagingMode = MODE_PICTURE;
+		send(sock, &gImagingMode, sizeof(int16_t), MSG_NOSIGNAL);
+		__TOC_GLOBAL__(VIDEO)
 	}
 	// unknown command
 	else {

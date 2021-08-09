@@ -25,10 +25,10 @@
  - reading ROI (6Bytes) -> readRegister 96 6   or   read 96 6   or   r 96 6
  - reading 1 Byte from Register AE -> read AE 1   or   read AE
  */
-int16_t apiReadRegister(const int registerAddress, const int nBytes, unsigned char *values, const int deviceAddress) {
+int16_t apiReadRegister(const int registerAddress, const int nBytes, unsigned char **values, const int deviceAddress) {
 	API_ENTER;
 
-	if (i2c(deviceAddress, 'r', registerAddress, nBytes, &values) > 0) {
+	if (i2c(deviceAddress, 'r', registerAddress, nBytes, values) > 0) {
 		return nBytes;
 	}
 	API_EXIT;
@@ -47,10 +47,10 @@ int16_t apiReadRegister(const int registerAddress, const int nBytes, unsigned ch
  - writing default ROI (6Bytes) -> writeRegister 96 00 04 01 43 06 70    or   write 96 ...   or   w 96 6 ...
  - writing 1 Byte to Register AE -> write AE 1   or   write AE
  */
-int16_t apiWriteRegister(const int registerAddress, const int nBytes, unsigned char *values, const int deviceAddress) {
+int16_t apiWriteRegister(const int registerAddress, const int nBytes, unsigned char **values, const int deviceAddress) {
 	API_ENTER;
 
-	i2c(deviceAddress, 'w', registerAddress, nBytes, &values);
+	i2c(deviceAddress, 'w', registerAddress, nBytes, values);
 	API_EXIT;
 	return nBytes;
 }
