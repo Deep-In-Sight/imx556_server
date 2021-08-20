@@ -42,8 +42,8 @@ static int autoTrigger = 0;
 #endif
 
 static int fd_mem;
-static unsigned int ddr_map_base_addr;
-static unsigned int ddr_map_size;
+static long long unsigned int ddr_map_base_addr;
+static long long unsigned int ddr_map_size;
 static unsigned int buffer_depth;
 static uint16_t* pMem;
 static uint32_t* pMem32;
@@ -68,7 +68,7 @@ int accelInit(const unsigned int addressOfDevice) {
 
 	FILE* fd_map;
 	deviceAddress = addressOfDevice;
-	unsigned int str_len = 11;
+	unsigned int str_len = 19;
 	char line[str_len];
 
 	int Status;
@@ -87,7 +87,7 @@ int accelInit(const unsigned int addressOfDevice) {
 	fgets(line, str_len, fd_map);
 	fflush(stdin);
 	fclose(fd_map);
-	ddr_map_base_addr = (unsigned int) strtoll(line, NULL, 0);
+	ddr_map_base_addr = strtoll(line, NULL, 0);
 
 	fd_map = fopen("/sys/class/uio/uio0/maps/map1/size", "r");
 	if (fd_map == NULL) {
@@ -97,7 +97,7 @@ int accelInit(const unsigned int addressOfDevice) {
 	fgets(line, str_len, fd_map);
 	fflush(stdin);
 	fclose(fd_map);
-	ddr_map_size = (unsigned int) strtoll(line, NULL, 0);
+	ddr_map_size = strtoll(line, NULL, 0);
 #ifdef BUFFER_DEPTH
 	buffer_depth = BUFFER_DEPTH;
 #else
@@ -114,6 +114,7 @@ int accelInit(const unsigned int addressOfDevice) {
 		return -1;
 	}
 
+	printf("ddr_map_base_addr = %llx, ddr_map_size = %llx\n", ddr_map_base_addr, ddr_map_size);
 	pMem = (uint16_t*)mmap(0, ddr_map_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd_mem,
 			ddr_map_base_addr);
 	pMem32 = (uint32_t*) pMem;
@@ -130,6 +131,7 @@ int accelInit(const unsigned int addressOfDevice) {
 		return -1;
 	}
 
+	/*
 	pMonitor = (uint32_t*)mmap(0, 4*sizeof(uint32_t), PROT_WRITE | PROT_READ, MAP_SHARED, fd_mem,
 			0x44a00000);
 	if ((pMonitor) == MAP_FAILED) {
@@ -142,10 +144,10 @@ int accelInit(const unsigned int addressOfDevice) {
 		perror("\x1b[31m" "mlock failed" "\x1b[0m");
 		close(fd_mem);
 		return -1;
-	}
+	}*/
 
-	printf("Memory mapped successfully from %x to %x\n", (uint32_t)ddr_map_base_addr, (uint32_t)pMem);
-	printf("getPhaseMap monitor memory mapped successfully from %x to %x\n", (uint32_t)0x44a00000, (uint32_t)pMonitor);
+	printf("Memory mapped successfully from %llx to %llx\n", ddr_map_base_addr, (long long unsigned int)pMem);
+	//printf("getPhaseMap monitor memory mapped successfully from %x to %x\n", (uint32_t)0x44a00000, (uint32_t)pMonitor);
 
 	XGetphasemap_Set_frame02_offset(&phaseAccel, ddr_map_base_addr);
 	XGetphasemap_Set_frame13_offset(&phaseAccel, ddr_map_base_addr + DCS_SZ*2*sizeof(uint16_t));
@@ -160,7 +162,7 @@ int accelInit(const unsigned int addressOfDevice) {
 	ACCEL_LINE;
 	XGetphasemap_IsDonePoll(&phaseAccel, 50);
 
-	printMonitor();
+	//printMonitor();
 
 	return 0;
 }
@@ -213,8 +215,8 @@ void accelEnableAmplitudeScale(int scale_en) {
 void getNextFrameSlot(uint16_t** phys, uint32_t* virt) {
 	static int frameCnt = 0;
 
-	uint32_t buffer_base_virt = (uint32_t) pMem;
-	uint32_t buffer_base_phys = ddr_map_base_addr;
+	uint64_t buffer_base_virt = (uint64_t) pMem;
+	uint64_t buffer_base_phys = ddr_map_base_addr;
 
 	buffer_base_virt = buffer_base_virt + FRAME_SZ * frameCnt;
 	buffer_base_phys = buffer_base_phys + FRAME_SZ * frameCnt;
@@ -227,9 +229,9 @@ void getNextFrameSlot(uint16_t** phys, uint32_t* virt) {
 int accelGetImage(uint16_t **data) {
 	uint16_t* frameVirtAddr = NULL;
 	uint32_t framePhysAddr;
-	pid_t tid = syscall(__NR_gettid);
-	static int icount_last = 0;
-	int icount = 0;
+	//pid_t tid = syscall(__NR_gettid);
+	//static int icount_last = 0;
+	//int icount = 0;
 
 	ACCEL_ENTER;
 
@@ -282,7 +284,7 @@ int accelGetImage(uint16_t **data) {
 		} else {
 			buffer_offset = DCS_SZ*3;
 		}
-	} else if (imageMode == MODE_PHASE) {
+	} else {
 		size = DCS_SZ;
 		buffer_offset = DCS_SZ*3;
 	}

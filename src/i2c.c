@@ -10,7 +10,7 @@
 int i2c(unsigned int dev_addr, char op, unsigned int reg_addr, unsigned int n_bytes_data, unsigned char** p_data) {
 
 	int fd_i2c;
-	char *filename = "/dev/i2c-0";
+	char *filename = "/dev/i2c-4";
 	unsigned char buf_rd[1];
 	unsigned char buf_wr[3];
 	int rd = 0, wr = 0;

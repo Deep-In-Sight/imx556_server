@@ -85,12 +85,15 @@ void serverStopThread() {
 	if (isQueueFull()){
 		dequeue(&e);
 	}
+	printf("thread join start\n");
 	pthread_join(imageThread, NULL);
+	printf("thread joined\n");
 #ifdef THREADSAFE_QUEUE
 	delete q;
 #else
 	queueDestroy();
 #endif
+	printf("queued destroyed\n");
 }
 /*!
  Starts TCP Server for communication with client application
