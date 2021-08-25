@@ -1,5 +1,5 @@
-CXXFLAGS += -D__linux__ -Wall -fmessage-length=0 -fpermissive
-LDFLAGS  += -lstdc++ -lm -lpthread
+CXXFLAGS = -D__linux__ -Wall 
+LDFLAGS  = -lpthread
 BUILD    := ./build
 OBJ_DIR  := $(BUILD)/objs
 APP_DIR  := $(BUILD)/apps
@@ -16,7 +16,7 @@ all: builddir $(APP_DIR)/$(TARGET)
 
 $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $< -MMD -o $@
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c -o $@ $<
 
 $(APP_DIR)/$(TARGET): $(OBJECTS)
 	@mkdir -p $(@D)

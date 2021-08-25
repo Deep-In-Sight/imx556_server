@@ -72,7 +72,7 @@ int accelInit(const unsigned int addressOfDevice) {
 	char line[str_len];
 
 	int Status;
-	Status = XGetphasemap_Initialize(&phaseAccel, "getPhaseMap");
+	Status = XGetphasemap_Initialize(&phaseAccel, "getPhaseMap2");
 	if (Status != XST_SUCCESS) {
 		printf("Dma initialize failed\n");
 		return -1;
@@ -150,7 +150,9 @@ int accelInit(const unsigned int addressOfDevice) {
 	//printf("getPhaseMap monitor memory mapped successfully from %x to %x\n", (uint32_t)0x44a00000, (uint32_t)pMonitor);
 
 	XGetphasemap_Set_frame02_offset(&phaseAccel, ddr_map_base_addr);
-	XGetphasemap_Set_frame13_offset(&phaseAccel, ddr_map_base_addr + DCS_SZ*2*sizeof(uint16_t));
+	XGetphasemap_Set_frame13_offset(&phaseAccel, ddr_map_base_addr);
+
+//	XGetphasemap_Set_frame13_offset(&phaseAccel, ddr_map_base_addr + DCS_SZ*2*sizeof(uint16_t));
 	XGetphasemap_InterruptGlobalEnable(&phaseAccel);
 	XGetphasemap_InterruptEnable(&phaseAccel, XGETPHASEMAP_CONTROL_INTERRUPTS_DONE_MASK);
 
@@ -212,7 +214,7 @@ void accelEnableAmplitudeScale(int scale_en) {
 	XGetphasemap_Set_regCtrl(&phaseAccel, regCtrl);
 }
 
-void getNextFrameSlot(uint16_t** phys, uint32_t* virt) {
+void getNextFrameSlot(uint16_t** virt, uint32_t* phys) {
 	static int frameCnt = 0;
 
 	uint64_t buffer_base_virt = (uint64_t) pMem;
@@ -222,8 +224,8 @@ void getNextFrameSlot(uint16_t** phys, uint32_t* virt) {
 	buffer_base_phys = buffer_base_phys + FRAME_SZ * frameCnt;
 	frameCnt = (frameCnt + 1) % buffer_depth;
 
-	*phys = (uint16_t*) buffer_base_virt;
-	*virt = buffer_base_phys;
+	*virt = (uint16_t*) buffer_base_virt;
+	*phys = buffer_base_phys;
 }
 
 int accelGetImage(uint16_t **data) {
@@ -241,7 +243,9 @@ int accelGetImage(uint16_t **data) {
 	getNextFrameSlot(&frameVirtAddr, &framePhysAddr);
 
 	XGetphasemap_Set_frame02_offset(&phaseAccel, framePhysAddr);
-	XGetphasemap_Set_frame13_offset(&phaseAccel, framePhysAddr + DCS_SZ*2*sizeof(uint16_t));
+	XGetphasemap_Set_frame13_offset(&phaseAccel, framePhysAddr);
+
+	//XGetphasemap_Set_frame13_offset(&phaseAccel, framePhysAddr + DCS_SZ*2*sizeof(uint16_t));
 //	XGetphasemap_InterruptEnable(&phaseAccel, XGETPHASEMAP_CONTROL_INTERRUPTS_DONE_MASK);
 //	XGetphasemap_InterruptClear(&phaseAccel, XGETPHASEMAP_CONTROL_INTERRUPTS_DONE_MASK);
 //	usleep(1000);

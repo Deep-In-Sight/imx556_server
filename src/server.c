@@ -102,10 +102,21 @@ void serverStopThread() {
  */
 int startServer(const unsigned int addressOfDevice) {
 	deviceAddress = addressOfDevice;
-	signal(SIGQUIT, signalHandler); // add signal to signalHandler to close socket on crash or abort
-	signal(SIGINT, signalHandler);
-	signal(SIGPIPE, signalHandler);
-	signal(SIGSEGV, signalHandler);
+	//signal(SIGQUIT, signalHandler); // add signal to signalHandler to close socket on crash or abort
+	//signal(SIGINT, signalHandler);
+	//signal(SIGPIPE, signalHandler);
+	//signal(SIGSEGV, signalHandler);
+	
+	struct sigaction new_act, old_act;
+	new_act.sa_handler = signalHandler;
+	sigemptyset(&new_act.sa_mask);
+	new_act.sa_flags = 0;
+
+	sigaction(SIGINT, &new_act, NULL);
+	sigaction(SIGQUIT, &new_act, NULL);
+	sigaction(SIGPIPE, &new_act, NULL);
+	sigaction(SIGSEGV, &new_act, NULL);
+
 	pData = (unsigned char*)malloc(MAX_COMMAND_ARGUMENTS - 3 * sizeof(unsigned char));//free???
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (sockfd < 0) {
@@ -293,6 +304,9 @@ void handleRequest(int sock) {
  @param sig signal ID
  */
 void signalHandler(int sig) {
+	//this signal can go f itself I dont know why it happen here
+	//if (sig==33)
+	//	return;
 	printf("caught signal %i .... going to close application\n", sig);
 	close(sockfd);
 	close(newsockfd);
