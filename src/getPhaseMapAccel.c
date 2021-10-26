@@ -42,8 +42,9 @@ static int autoTrigger = 0;
 #endif
 
 static int fd_mem;
-static long long unsigned int ddr_map_base_addr;
-static long long unsigned int ddr_map_size;
+
+static uint64_t ddr_map_base_addr;
+static uint64_t ddr_map_size;
 static unsigned int buffer_depth;
 static uint16_t* pMem;
 static uint32_t* pMem32;

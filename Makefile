@@ -1,4 +1,5 @@
-CXXFLAGS = -D__linux__ -Wall 
+BOARD = CABIN2
+CXXFLAGS = -D__linux__ -D$(BOARD) -Wall 
 LDFLAGS  = -lpthread
 BUILD    := ./build
 OBJ_DIR  := $(BUILD)/objs

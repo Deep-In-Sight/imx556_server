@@ -1,6 +1,7 @@
 #include <getPhaseMapAccel.h>
 #include "api.h"
 #include "i2c.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,6 +67,20 @@ void apiSetPhaseOffset(uint16_t offset) {
 	API_ENTER;
 	accelSetOffset(offset);
 	API_EXIT;
+}
+
+int apiChangeModFreq(int freq) {
+	API_ENTER;
+	int rc = changeModFreq(freq);
+	API_EXIT;
+	return rc;
+}
+
+int apiChangeIntegration(int time_ns) {
+	API_ENTER;
+	int rc = changeIntegration(time_ns);
+	API_EXIT;
+	return rc;
 }
 
 void apiEnableAmplitudeScale(int scale_en) {

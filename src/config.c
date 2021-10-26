@@ -1,25 +1,33 @@
-#include <getPhaseMapAccel.h>
+#include "getPhaseMapAccel.h"
 #include "config.h"
 #include "i2c.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
 
+static unsigned int deviceAddress;
 
-/// \addtogroup configuration
-/// @{
+static const int minFreq = 4;
+static const int maxFreq = 100;
+static const int numRegsPerFreq = 10;
+static const int numFreq = (maxFreq - minFreq + 1);
+static i2cReg modSettings[numFreq * numRegsPerFreq];
+static uint8_t i2cVal[1];
 
 /*!
  Initializes the configuration.
- @param deviceAddress i2c address of the chip (default 0x20)
+ @param deviceAddress i2c address of the chip
  @returns On success, 0, on error -1
  */
-int configInit(int deviceAddress) {
+int configInit(int addressOfDevice) {
 	int status;
 
-	status = sony_loadRegisters("imx556_standard.cfg", deviceAddress);
+	deviceAddress = addressOfDevice;
+
+	status = sony_loadRegisters("imx556_standard.cfg");
 	if (status < 0)
 		return -1;
 
@@ -31,10 +39,14 @@ int configInit(int deviceAddress) {
 	accelSetOffset(0);
 	accelEnableAmplitudeScale(0);
 
+	status = initModFreq();
+	if (status < 0)
+		return -1;
+
 	return 0;
 }
 
-int sony_loadRegisters(char* filename, const int deviceAddress) {
+int sony_loadRegisters(char* filename) {
 	FILE *configFile;
 	char line[16];
 	int regs = 0;
@@ -71,4 +83,87 @@ int sony_loadRegisters(char* filename, const int deviceAddress) {
 	}
 	printf("Configured %d register\n", regs);
 	return 0;
+}
+
+
+int initModFreq() {
+	char* md5sum = "3df3357d73396f421fbdf3fb8dac77a2";
+	char md5sumRet[256];
+	char* ptoken;
+	FILE *fp;
+
+	system("md5sum freqmod.txt > md5sum.txt");
+	fp = fopen("md5sum.txt", "r");
+	if (!fp) {
+		printf("Cannot check md5sum\n");
+		return -1;
+	}
+	fgets(md5sumRet, sizeof(md5sumRet), fp);
+	ptoken = strtok(md5sumRet, " ");
+	if (strcmp(ptoken, md5sum)) {
+		printf("freqmod.txt is corrupted ;;");
+		return -1;
+	}
+	fclose(fp);
+	system("rm md5sum.txt");
+
+	fp = fopen("freqmod.txt", "r");
+	if (!fp) {
+		printf("Cannot load modulation frequencies\n");
+		return -1;
+	}
+
+	//in freqmod.txt, from top to bottom, F=max to min.
+	for (int freqIdx = 0; freqIdx < numFreq; freqIdx++) {
+		i2cReg* regs = &modSettings[freqIdx*numRegsPerFreq];
+		for (int regIdx = 0; regIdx < numRegsPerFreq; regIdx++) {
+			int a, v;
+			fscanf(fp, "%d %d\n", &a, &v);
+			regs[regIdx].addr = (uint16_t) a;
+			regs[regIdx].val = (uint8_t) v;
+		}
+	}
+	fclose(fp);
+
+	return 0;
+}
+
+int changeModFreq(int freq) {
+	i2cReg* regs;
+	uint8_t* pVal = i2cVal;
+
+	if (freq < minFreq || freq > maxFreq)
+		return -1;
+	else {
+		regs = &modSettings[(maxFreq-freq)*numRegsPerFreq];
+		printf("changing modulation frequency:\n");
+		for (int regIdx = 0; regIdx < numRegsPerFreq; regIdx++) {
+			uint16_t a = regs[regIdx].addr;
+			i2cVal[0] = regs[regIdx].val;
+			printf("a=0x%04x v=0x%02x\n", a, i2cVal[0]);
+			i2c(deviceAddress, 'w', a, 1, &pVal);
+		}
+		return 0;
+	}
+}
+
+int changeIntegration(int time_ns) {
+    int clk120;
+    uint8_t* pVal = i2cVal;
+
+    if (time_ns < 250 || time_ns > 1000000)
+    	return -1;
+
+    clk120 = (int)(time_ns/8.3);
+
+    //4registers/phase x 4phases, starting from 0x2120
+    printf("changing integration time:\n");
+    for (int i = 0; i < 16; i++) {
+        int byteshift = 3-(i%4);
+        uint16_t a = 0x2120 + i;
+        i2cVal[0] = (clk120 >> (byteshift*8)) & 0xFF;
+        printf("a=0x%04x v=0x%02x\n", a, i2cVal[0]);
+        i2c(deviceAddress, 'w', a, 1, &pVal);
+    }
+    return 0;
 }

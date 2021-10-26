@@ -102,12 +102,8 @@ void serverStopThread() {
  */
 int startServer(const unsigned int addressOfDevice) {
 	deviceAddress = addressOfDevice;
-	//signal(SIGQUIT, signalHandler); // add signal to signalHandler to close socket on crash or abort
-	//signal(SIGINT, signalHandler);
-	//signal(SIGPIPE, signalHandler);
-	//signal(SIGSEGV, signalHandler);
 	
-	struct sigaction new_act, old_act;
+	struct sigaction new_act;
 	new_act.sa_handler = signalHandler;
 	sigemptyset(&new_act.sa_mask);
 	new_act.sa_flags = 0;
@@ -270,7 +266,7 @@ void handleRequest(int sock) {
 			__TOC__(SOCKET_SEND)
 		}
 	} else if (strcmp(stringArray[0], "setMode") == 0 && argumentCount == 1) {
-		int mode = helperStringToHex(stringArray[1]);
+		int mode = helperStringToInteger(stringArray[1]);
 		answer = apiSetMode(mode);
 		send(sock, &answer, sizeof(int16_t), MSG_NOSIGNAL);
 	} else if (strcmp(stringArray[0], "setPhaseOffset") == 0 && argumentCount == 1) {
@@ -285,11 +281,19 @@ void handleRequest(int sock) {
 		gImagingMode = MODE_VIDEO;
 		send(sock, &gImagingMode, sizeof(int16_t), MSG_NOSIGNAL);
 
-	}else if (strcmp(stringArray[0], "stopVideo") == 0 && !argumentCount) {
+	} else if (strcmp(stringArray[0], "stopVideo") == 0 && !argumentCount) {
 		serverStopThread();
 		gImagingMode = MODE_PICTURE;
 		send(sock, &gImagingMode, sizeof(int16_t), MSG_NOSIGNAL);
 		__TOC_GLOBAL__(VIDEO)
+	} else if (strcmp(stringArray[0], "changeModFreq") == 0 && argumentCount == 1) {
+		int freq = helperStringToInteger(stringArray[1]);
+		answer = apiChangeModFreq(freq);
+		send(sock, &answer, sizeof(int16_t), MSG_NOSIGNAL);
+	} else if (strcmp(stringArray[0], "changeIntegration") == 0 && argumentCount == 1) {
+		int time_ns = helperStringToInteger(stringArray[1]);
+		answer = apiChangeIntegration(time_ns);
+		send(sock, &answer, sizeof(int16_t), MSG_NOSIGNAL);
 	}
 	// unknown command
 	else {
