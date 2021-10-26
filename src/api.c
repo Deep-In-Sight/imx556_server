@@ -58,20 +58,20 @@ int16_t apiWriteRegister(const int registerAddress, const int nBytes, unsigned c
 
 int apiSetMode(int mode) {
 	API_ENTER;
-	int rc = accelSetMode(mode);
+	int rc = accelSetMode((uint8_t)mode);
 	API_EXIT;
 	return rc;
 }
 
-void apiSetPhaseOffset(uint16_t offset) {
+void apiSetDistanceOffset(int offset_cm) {
 	API_ENTER;
-	accelSetOffset(offset);
+	changeDistanceOffset(offset_cm);
 	API_EXIT;
 }
 
 int apiChangeModFreq(int freq) {
 	API_ENTER;
-	int rc = changeModFreq(freq);
+	int rc = changeModFreq((uint8_t)freq);
 	API_EXIT;
 	return rc;
 }

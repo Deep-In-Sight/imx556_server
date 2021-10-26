@@ -62,7 +62,7 @@ void printMonitor() {
 }
 
 
-int accelInit(const unsigned int addressOfDevice) {
+int accelInit(const uint8_t addressOfDevice) {
 
 	pData = (unsigned char*) malloc(1 * sizeof(unsigned char));
 	pData[0] = 0x01;
@@ -182,7 +182,7 @@ void accelSetVideoMode(int isVideo) {
 	i2c(deviceAddress, 'w', 0x2100, 1, &pData);
 }
 
-int accelSetMode(int mode) {
+int accelSetMode(uint8_t mode) {
 	if (mode > MODE_NUM) {
 		return -1;
 	} else {
@@ -196,14 +196,14 @@ int accelSetMode(int mode) {
 	}
 }
 
-void accelSetOffset(uint16_t offset) {
+void accelSetPhaseOffset(uint16_t phaseOffset) {
 	uint32_t regCtrl = XGetphasemap_Get_regCtrl(&phaseAccel);
 	regCtrl &= 0x0000FFFF;
-	regCtrl |= (((uint32_t)offset) << 16);
+	regCtrl |= (((uint32_t)phaseOffset) << 16);
 	XGetphasemap_Set_regCtrl(&phaseAccel, regCtrl);
 }
 
-void accelEnableAmplitudeScale(int scale_en) {
+void accelEnableAmplitudeScale(uint8_t scale_en) {
 	scaleMode = scale_en;
 	uint32_t SCALE_EN_BIT = (0x01 << 2);
 	uint32_t regCtrl = XGetphasemap_Get_regCtrl(&phaseAccel);

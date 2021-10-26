@@ -6,7 +6,7 @@
 int16_t apiReadRegister(const int registerAddress, const int nBytes, unsigned char **values, const int deviceAddress);
 int16_t apiWriteRegister(const int registerAddress, const int nBytes, unsigned char **values, const int deviceAddress);
 int apiSetMode(int mode);
-void apiSetPhaseOffset(uint16_t phaseOffset);
+void apiSetDistanceOffset(int offset_cm);
 void apiEnableAmplitudeScale(int scale_en);
 int apiChangeModFreq(int freq);
 int apiChangeIntegration(int time_ns);

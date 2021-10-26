@@ -269,10 +269,10 @@ void handleRequest(int sock) {
 		int mode = helperStringToInteger(stringArray[1]);
 		answer = apiSetMode(mode);
 		send(sock, &answer, sizeof(int16_t), MSG_NOSIGNAL);
-	} else if (strcmp(stringArray[0], "setPhaseOffset") == 0 && argumentCount == 1) {
-		int offset = helperStringToInteger(stringArray[1]);
-		printf("Setting offset to %d\n", offset);
-		apiSetPhaseOffset(offset);
+	} else if (strcmp(stringArray[0], "changeDistanceOffset") == 0 && argumentCount == 1) {
+		int offset_cm = helperStringToInteger(stringArray[1]);
+		printf("Setting offset to %d cm\n", offset_cm);
+		apiSetDistanceOffset(offset_cm);
 	} else if (strcmp(stringArray[0], "setAmplitudeScale") == 0 && argumentCount == 1) {
 		int enable = helperStringToInteger(stringArray[1]);
 		apiEnableAmplitudeScale(enable);

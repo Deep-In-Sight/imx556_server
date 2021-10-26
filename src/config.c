@@ -17,6 +17,8 @@ static const int numFreq = (maxFreq - minFreq + 1);
 static i2cReg modSettings[numFreq * numRegsPerFreq];
 static uint8_t i2cVal[1];
 
+static uint8_t currentFreq = 24;
+
 /*!
  Initializes the configuration.
  @param deviceAddress i2c address of the chip
@@ -36,7 +38,7 @@ int configInit(int addressOfDevice) {
 		return -1;
 
 	accelSetMode(MODE_PHASE);
-	accelSetOffset(0);
+	accelSetPhaseOffset(0);
 	accelEnableAmplitudeScale(0);
 
 	status = initModFreq();
@@ -128,13 +130,15 @@ int initModFreq() {
 	return 0;
 }
 
-int changeModFreq(int freq) {
+int changeModFreq(uint8_t freq) {
 	i2cReg* regs;
 	uint8_t* pVal = i2cVal;
 
 	if (freq < minFreq || freq > maxFreq)
 		return -1;
 	else {
+		currentFreq = freq;
+
 		regs = &modSettings[(maxFreq-freq)*numRegsPerFreq];
 		printf("changing modulation frequency:\n");
 		for (int regIdx = 0; regIdx < numRegsPerFreq; regIdx++) {
@@ -147,7 +151,7 @@ int changeModFreq(int freq) {
 	}
 }
 
-int changeIntegration(int time_ns) {
+int changeIntegration(uint32_t time_ns) {
     int clk120;
     uint8_t* pVal = i2cVal;
 
@@ -166,4 +170,13 @@ int changeIntegration(int time_ns) {
         i2c(deviceAddress, 'w', a, 1, &pVal);
     }
     return 0;
+}
+
+void changeDistanceOffset(int offset_cm) {
+	float range_cm = 300.0/(2*currentFreq)*100;
+	//phase is shifted from 0:2pi to 0:65535
+	int offsetInt = (int) (offset_cm / range_cm * 65535);
+	uint16_t phaseOffset = (uint16_t)(offsetInt & 0xFFFF);
+	printf("changing phaseoffset to %d\n", phaseOffset);
+	accelSetPhaseOffset(phaseOffset);
 }

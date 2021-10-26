@@ -11,11 +11,11 @@ enum IMAGE_MODE {
 	MODE_NUM
 };
 
-int accelInit(const unsigned int addressOfDevice);
+int accelInit(const uint8_t addressOfDevice);
 int accelGetBufferDepth();
-int accelSetMode(int mode);
-void accelSetOffset(uint16_t offset);
-void accelEnableAmplitudeScale(int scale_en);
+int accelSetMode(uint8_t mode);
+void accelSetPhaseOffset(uint16_t phaseOffset);
+void accelEnableAmplitudeScale(uint8_t scale_en);
 int accelGetImage(uint16_t **data);
 int accelRelease();
 
