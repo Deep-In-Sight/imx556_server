@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 
+static int initialized = false;
 static unsigned int deviceAddress;
 
 static const int minFreq = 4;
@@ -29,6 +30,8 @@ int configInit(int addressOfDevice) {
 
 	deviceAddress = addressOfDevice;
 
+	initialized = 0;
+
 	status = sony_loadRegisters("imx556_standard.cfg");
 	if (status < 0)
 		return -1;
@@ -45,7 +48,12 @@ int configInit(int addressOfDevice) {
 	if (status < 0)
 		return -1;
 
+	initialized = 1;
 	return 0;
+}
+
+int configGetStatus() {
+	return initialized? 0 : -1;
 }
 
 int sony_loadRegisters(char* filename) {

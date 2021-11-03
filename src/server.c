@@ -21,6 +21,8 @@
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <sys/reboot.h>
+
 
 #include "queue.h"
 #include "profile.h"
@@ -38,11 +40,8 @@ static IMAGING_MODE gImagingMode = MODE_PICTURE;
 static int gVideoRunning = 0;
 static int gVideoStopped = 1;
 
-#ifdef THREADSAFE_QUEUE
-static SafeQueue<frame_desc_t>* q;
-#endif
 
-void handleRequest(int sock);
+size_t handleRequest(char* cmdline, char** pData);
 void signalHandler(int sig);
 void serverSend(void* buffer, size_t size);
 
@@ -52,7 +51,6 @@ struct sockaddr_in serv_addr, cli_addr;
 
 static unsigned int deviceAddress;
 unsigned char* pData;
-static int gSock = 0;
 
 void* imagingThread(void*){
 	uint16_t* frameAddr=NULL;
@@ -66,11 +64,7 @@ void* imagingThread(void*){
 		__TOC_SUM__(GET_DATA)
 		desc.addr = frameAddr;
 		desc.size = dataSize;
-#ifdef THREADSAFE_QUEUE
-		q->enqueue(desc);
-#else
 		enqueue(desc);
-#endif
 	};
 
 	gVideoStopped = 1;
@@ -88,11 +82,7 @@ void serverStopThread() {
 	printf("thread join start\n");
 	pthread_join(imageThread, NULL);
 	printf("thread joined\n");
-#ifdef THREADSAFE_QUEUE
-	delete q;
-#else
 	queueDestroy();
-#endif
 	printf("queued destroyed\n");
 }
 /*!
@@ -101,6 +91,10 @@ void serverStopThread() {
  @return On error, -1 is returned.
  */
 int startServer(const unsigned int addressOfDevice) {
+
+	char rxBuffer[TCP_BUFFER_SIZE];
+	char* txBuffer;
+
 	deviceAddress = addressOfDevice;
 	
 	struct sigaction new_act;
@@ -113,7 +107,6 @@ int startServer(const unsigned int addressOfDevice) {
 	sigaction(SIGPIPE, &new_act, NULL);
 	sigaction(SIGSEGV, &new_act, NULL);
 
-	pData = (unsigned char*)malloc(MAX_COMMAND_ARGUMENTS - 3 * sizeof(unsigned char));//free???
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (sockfd < 0) {
 		return -1;
@@ -140,167 +133,176 @@ int startServer(const unsigned int addressOfDevice) {
 
 	// handle single connection
 	printf("waiting for requests\n");
-
-	while (1) { //?????
-		newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-		if (newsockfd < 0) {
-			printf("couldn't accept\n");
-			return -1;
-		}
-		handleRequest(newsockfd);
-		close(newsockfd);
+	newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+	if (newsockfd < 0) {
+		printf("couldn't accept\n");
+		return -1;
 	}
 
+	while (1) { //?????
+		//read request
+		bzero(rxBuffer, TCP_BUFFER_SIZE);
+		int ret = read(newsockfd, rxBuffer, TCP_BUFFER_SIZE);
+
+		//reconnect if client disconnect
+		if (!ret) {
+			close(newsockfd);
+			newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+			if (newsockfd < 0) {
+				printf("couldn't accept\n");
+				return -1;
+			}
+			continue;
+		}
+
+		//handle request
+		size_t retSize = handleRequest(rxBuffer, &txBuffer);
+
+		//write data/return
+		if(retSize) {
+			__TIC__(SEND_DATA);
+			send(newsockfd, txBuffer, retSize, MSG_NOSIGNAL);
+			__TOC__(SEND_DATA);
+		}
+	}
+
+	close(newsockfd);
 	close(sockfd);
 	return 0;
 }
 
 /*!
- Handles Requests and writes answer into TCP socket
- @param sock TCP-socket to write response.
- @return On error, -1 is returned.
+ Handles Requests
+ Args:
+ 	 cmd: request to be handled
+ 	 pData: data to send to client
+ Return:
+ 	 size of data to be sent from pData
  */
-void handleRequest(int sock) {
-//	bbbLEDEnable(3, 1);
-	char buffer[TCP_BUFFER_SIZE];
-	bzero(buffer, TCP_BUFFER_SIZE);
-	int size = read(sock, buffer, TCP_BUFFER_SIZE);
-	gSock = sock;
-	if (buffer[size - 1] == '\n') {
-		buffer[size - 1] = '\0';
-	}
-	char stringArray[MAX_COMMAND_ARGUMENTS][MAX_COMMAND_ARGUMENT_LENGTH];
-	int argumentCount = helperParseCommand(buffer, stringArray);
-	unsigned char response[TCP_BUFFER_SIZE];
-	bzero(response, TCP_BUFFER_SIZE);
-	int16_t answer;
+size_t handleRequest(char* cmdline, char** pData) {
+	//store the return code for short command
+	static int16_t answer;
+	//store the frame data for getFrame command
+	uint16_t* pMem = NULL;
+	//size of the data to write to socket
+	size_t answerSize;
+	//arguments list
+	char arguments[MAX_COMMAND_ARGUMENTS][MAX_COMMAND_ARGUMENT_LENGTH];
+	int argumentCount = helperParseCommand(cmdline, arguments);
+	char* cmd = arguments[0];
 
 	//COMMANDS
-	if ((strcmp(stringArray[0], "readRegister") == 0
-			|| strcmp(stringArray[0], "read") == 0
-			|| strcmp(stringArray[0], "r") == 0) && argumentCount >= 1
+	if ((strcmp(cmd, "readRegister") == 0
+			|| strcmp(cmd, "read") == 0
+			|| strcmp(cmd, "r") == 0) && argumentCount == 1
 			&& argumentCount < 3) {
-		unsigned char *values;
-		int v;
-		int nBytes;
+		uint8_t readVal[1];
+		uint8_t *values = readVal;
 
-		if (argumentCount == 1) {
-			nBytes = 1;
-		} else {
-			nBytes = helperStringToHex(stringArray[2]);
-		}
-		int registerAddress = helperStringToHex(stringArray[1]);
+		uint16_t registerAddress = (uint16_t) helperStringToHex(arguments[1]);
+		apiReadRegister(registerAddress, 1, &values, deviceAddress);
+		answer = (int16_t)readVal[0];
+		answerSize = 2;
+	} else if ((strcmp(cmd, "writeRegister") == 0
+			|| strcmp(cmd, "write") == 0
+			|| strcmp(cmd, "w") == 0) && argumentCount == 2) {
+		uint16_t registerAddress = (uint16_t) helperStringToHex(arguments[1]);
+		uint8_t registerValues[1];
+		uint8_t* pVal = registerValues;
+		registerValues[0] =  (uint8_t) helperStringToHex(arguments[2]);
 
-		if (nBytes > 0 && registerAddress >= 0) {
-			values = (unsigned char*)malloc(nBytes * sizeof(unsigned char));
-			int16_t responseValues[nBytes];
-			apiReadRegister(registerAddress, nBytes, &values, deviceAddress);
-			for (v = 0; v < nBytes; v++) {
-				responseValues[v] = values[v];
-			}
-			printf("reg value: %d\n", responseValues[0]);
-			send(sock, responseValues, nBytes * sizeof(int16_t), MSG_NOSIGNAL);
-			free(values);
-		} else {
-			answer = -1;
-			send(sock, &answer, sizeof(int16_t), MSG_NOSIGNAL);
-		}
-	} else if ((strcmp(stringArray[0], "writeRegister") == 0
-			|| strcmp(stringArray[0], "write") == 0
-			|| strcmp(stringArray[0], "w") == 0) && argumentCount > 1) {
-		unsigned char *values = (unsigned char*)malloc(
-				(argumentCount - 1) * sizeof(unsigned char));
-		int registerAddress = helperStringToHex(stringArray[1]);
-		int i;
-		int ok = 1;
-		for (i = 0; i < argumentCount - 1; i++) {
-			if (helperStringToHex(stringArray[i + 2]) >= 0) {
-				values[i] = helperStringToHex(stringArray[i + 2]);
-			} else {
-				ok = 0;
-			}
-		}
-
-		if (registerAddress > 0 && ok > 0) {
-			answer = apiWriteRegister(registerAddress, argumentCount - 1,
-					&values, deviceAddress);
-		} else {
-			answer = -1;
-		}
-		send(sock, &answer, sizeof(int16_t), MSG_NOSIGNAL);
-		free(values);
-	} else if (strcmp(stringArray[0], "getFrame") == 0 && !argumentCount) {
+		answer = apiWriteRegister(registerAddress, 1, &pVal, deviceAddress);
+		answerSize = 2;
+	} else if (strcmp(cmd, "checkStatus") == 0 && !argumentCount) {
+		answer = configGetStatus();
+		answerSize = 2;
+		printf("Checking status: %d\n", answer);
+	} else if (strcmp(cmd, "reboot") == 0 && !argumentCount) {
+		reboot(RB_AUTOBOOT);
+	} else if (strcmp(cmd, "getFrame") == 0 && !argumentCount) {
 		frame_desc_t desc;
-		uint16_t* pMem = NULL;
 
 		if (gImagingMode == MODE_VIDEO) {
 			if (gVideoRunning == 0) {
 				gVideoRunning = 1;
 				int buffer_depth = accelGetBufferDepth();
-#ifdef THREADSAFE_QUEUE
-				q = new SafeQueue<frame_desc_t>();
-#else
 				queueInit(buffer_depth);
-#endif
 				pthread_create(&imageThread, NULL, (void*(*)(void*))imagingThread, NULL);
 			}
 
 			//send 10 frames at a time ->> increase frame rate and reduce times on getFrame command
-			for (int i = 0; i < 10; i++) {
-			//block until there is data to send
-#ifdef THREADSAFE_QUEUE
-				desc = q->dequeue();
-#else
-				dequeue(&desc);
-#endif
-				__TIC_SUM__(SOCKET_SEND)
-				send(sock, desc.addr, desc.size, MSG_NOSIGNAL);
-				__TOC_SUM__(SOCKET_SEND)
-			}
+//			for (int i = 0; i < 10; i++) {
+//			//block until there is data to send
+//				dequeue(&desc);
+//				pMem = desc.addr;
+//				answerSize = desc.size;
+//			}
+			dequeue(&desc);
+			pMem = desc.addr;
+			answerSize = desc.size;
 		} else {
 			__TIC__(GET_DATA)
-			int dataSize = 2 * accelGetImage(&pMem);
+			answerSize = 2 * accelGetImage(&pMem);
 			__TOC__(GET_DATA)
-			__TIC__(SOCKET_SEND)
-			send(sock, pMem, dataSize, MSG_NOSIGNAL);
-			__TOC__(SOCKET_SEND)
 		}
-	} else if (strcmp(stringArray[0], "setMode") == 0 && argumentCount == 1) {
-		int mode = helperStringToInteger(stringArray[1]);
+	} else if (strcmp(cmd, "setMode") == 0 && argumentCount == 1) {
+		int mode = helperStringToInteger(arguments[1]);
 		answer = apiSetMode(mode);
-		send(sock, &answer, sizeof(int16_t), MSG_NOSIGNAL);
-	} else if (strcmp(stringArray[0], "changeDistanceOffset") == 0 && argumentCount == 1) {
-		int offset_cm = helperStringToInteger(stringArray[1]);
+		answerSize = 2;
+	} else if (strcmp(cmd, "changeDistanceOffset") == 0 && argumentCount == 1) {
+		int offset_cm = helperStringToInteger(arguments[1]);
 		printf("Setting offset to %d cm\n", offset_cm);
 		apiSetDistanceOffset(offset_cm);
-	} else if (strcmp(stringArray[0], "setAmplitudeScale") == 0 && argumentCount == 1) {
-		int enable = helperStringToInteger(stringArray[1]);
+		answer = 0;
+		answerSize = 2;
+	} else if (strcmp(cmd, "setAmplitudeScale") == 0 && argumentCount == 1) {
+		int enable = helperStringToInteger(arguments[1]);
 		apiEnableAmplitudeScale(enable);
-	} else if (strcmp(stringArray[0], "startVideo") == 0 && !argumentCount) {
-		__TIC_GLOBAL__(VIDEO)
-		gImagingMode = MODE_VIDEO;
-		send(sock, &gImagingMode, sizeof(int16_t), MSG_NOSIGNAL);
-
-	} else if (strcmp(stringArray[0], "stopVideo") == 0 && !argumentCount) {
-		serverStopThread();
-		gImagingMode = MODE_PICTURE;
-		send(sock, &gImagingMode, sizeof(int16_t), MSG_NOSIGNAL);
+		answer = 0;
+		answerSize = 2;
+	} else if (strcmp(cmd, "startVideo") == 0 && !argumentCount) {
+		__TIC_GLOBAL__(VIDEO);
+		if (gImagingMode != MODE_VIDEO) {
+			gImagingMode = MODE_VIDEO;
+			answer = 0;
+		} else {
+			answer = -1;
+		}
+		answerSize = 2;
+	} else if (strcmp(cmd, "stopVideo") == 0 && !argumentCount) {
+		if (gImagingMode == MODE_VIDEO) {
+			serverStopThread();
+			gImagingMode = MODE_PICTURE;
+			answer = 0;
+		} else {
+			answer = -1;
+		}
+		answerSize = 2;
 		__TOC_GLOBAL__(VIDEO)
-	} else if (strcmp(stringArray[0], "changeModFreq") == 0 && argumentCount == 1) {
-		int freq = helperStringToInteger(stringArray[1]);
+	} else if (strcmp(cmd, "changeModFreq") == 0 && argumentCount == 1) {
+		int freq = helperStringToInteger(arguments[1]);
 		answer = apiChangeModFreq(freq);
-		send(sock, &answer, sizeof(int16_t), MSG_NOSIGNAL);
-	} else if (strcmp(stringArray[0], "changeIntegration") == 0 && argumentCount == 1) {
-		int time_ns = helperStringToInteger(stringArray[1]);
+		answerSize = 2;
+	} else if (strcmp(cmd, "changeIntegration") == 0 && argumentCount == 1) {
+		int time_ns = helperStringToInteger(arguments[1]);
 		answer = apiChangeIntegration(time_ns);
-		send(sock, &answer, sizeof(int16_t), MSG_NOSIGNAL);
+		answerSize = 2;
 	}
 	// unknown command
 	else {
-		printf("unknown command -> %s\n", stringArray[0]);
-		int16_t response = -1;
-		send(sock, &response, sizeof(int16_t), MSG_NOSIGNAL);
+		printf("unknown command -> %s\n", cmd);
+		answer = -1;
+		answerSize = 2;
 	}
+
+	//short commands
+	if (answerSize == 2) {
+		*pData = (char*) (&answer);
+	} else {
+		*pData = (char*) pMem;
+	}
+
+	return answerSize;
 }
 
 /*!
@@ -316,9 +318,4 @@ void signalHandler(int sig) {
 	close(newsockfd);
 	exit(0);
 }
-
-void serverSend(void* buffer, size_t size) {
-	send(gSock, buffer, size, MSG_NOSIGNAL);
-}
-
 

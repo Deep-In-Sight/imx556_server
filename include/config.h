@@ -4,6 +4,8 @@
 #include "stdint.h"
 
 int configInit(int addressOfDevice);
+/*check if sensor is initialized*/
+int configGetStatus() ;
 /*read preset*/
 int sony_loadRegisters(char* filename);
 /*read fmodData.txt and store fmod*/
