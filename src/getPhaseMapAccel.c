@@ -280,17 +280,13 @@ int accelGetImage(uint16_t **data) {
 	int size, buffer_offset;
 
 	if (imageMode == MODE_RAW) {
-		size = 4 * DCS_SZ;
+		size = 4 * DCS_SZ * sizeof(uint16_t);
 		buffer_offset = 0;
 	} else if (imageMode == MODE_AMP) {
-		size = DCS_SZ;
-		if (scaleMode) {
-			buffer_offset = DCS_SZ*4;
-		} else {
-			buffer_offset = DCS_SZ*3;
-		}
+		size = DCS_SZ * sizeof(uint8_t);
+		buffer_offset = DCS_SZ*4;
 	} else {
-		size = DCS_SZ;
+		size = DCS_SZ * sizeof(uint16_t);
 		buffer_offset = DCS_SZ*3;
 	}
 	*data = frameVirtAddr + buffer_offset;

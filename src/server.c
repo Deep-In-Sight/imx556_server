@@ -60,7 +60,7 @@ void* imagingThread(void*){
 
 	while(gVideoRunning){
 		__TIC_SUM__(GET_DATA)
-			dataSize = 2 * accelGetImage(&frameAddr);
+			dataSize = accelGetImage(&frameAddr);
 		__TOC_SUM__(GET_DATA)
 		desc.addr = frameAddr;
 		desc.size = dataSize;
@@ -242,7 +242,7 @@ size_t handleRequest(char* cmdline, char** pData) {
 			answerSize = desc.size;
 		} else {
 			__TIC__(GET_DATA)
-			answerSize = 2 * accelGetImage(&pMem);
+			answerSize = accelGetImage(&pMem);
 			__TOC__(GET_DATA)
 		}
 	} else if (strcmp(cmd, "setMode") == 0 && argumentCount == 1) {
