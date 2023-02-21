@@ -91,6 +91,8 @@ void XGetphasemap_DisableAutoRestart(XGetphasemap *InstancePtr);
 
 void XGetphasemap_Set_regCtrl(XGetphasemap *InstancePtr, u32 Data);
 u32 XGetphasemap_Get_regCtrl(XGetphasemap *InstancePtr);
+void XGetphasemap_Set_threshold(XGetphasemap *InstancePtr, u32 Data);
+u32 XGetphasemap_Get_threshold(XGetphasemap *InstancePtr);
 void XGetphasemap_Set_frame02_offset(XGetphasemap *InstancePtr, u32 Data);
 u32 XGetphasemap_Get_frame02_offset(XGetphasemap *InstancePtr);
 void XGetphasemap_Set_frame13_offset(XGetphasemap *InstancePtr, u32 Data);

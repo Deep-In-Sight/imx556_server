@@ -260,6 +260,11 @@ size_t handleRequest(char* cmdline, char** pData) {
 		apiEnableAmplitudeScale(enable);
 		answer = 0;
 		answerSize = 2;
+	} else if (strcmp(cmd, "setAmplitudeThreshold") == 0 && argumentCount == 1) {
+		int threshold = helperStringToInteger(arguments[1]);
+		apiSetAmplitudeThreshold(threshold);
+		answer = 0;
+		answerSize = 2;
 	} else if (strcmp(cmd, "startVideo") == 0 && !argumentCount) {
 		__TIC_GLOBAL__(VIDEO);
 		if (gImagingMode != MODE_VIDEO) {

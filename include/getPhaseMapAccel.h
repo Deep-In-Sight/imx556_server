@@ -16,6 +16,7 @@ int accelGetBufferDepth();
 int accelSetMode(uint8_t mode);
 void accelSetPhaseOffset(uint16_t phaseOffset);
 void accelEnableAmplitudeScale(uint8_t scale_en);
+int accelSetAmplitudeThreshold(int threshold);
 int accelGetImage(uint16_t **data);
 int accelRelease();
 

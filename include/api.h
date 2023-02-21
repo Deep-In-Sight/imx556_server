@@ -10,6 +10,7 @@ void apiSetDistanceOffset(int offset_cm);
 void apiEnableAmplitudeScale(int scale_en);
 int apiChangeModFreq(int freq);
 int apiChangeIntegration(int time_ns);
+int apiSetAmplitudeThreshold(int threshold);
 
 int16_t apiTest(int val);
 

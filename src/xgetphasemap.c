@@ -157,6 +157,23 @@ u32 XGetphasemap_Get_regCtrl(XGetphasemap *InstancePtr) {
     return Data;
 }
 
+void XGetphasemap_Set_threshold(XGetphasemap *InstancePtr, u32 Data) {
+    Xil_AssertVoid(InstancePtr != NULL);
+    Xil_AssertVoid(InstancePtr->IsReady == XIL_COMPONENT_IS_READY);
+
+    XGetphasemap_WriteReg(InstancePtr->Control_BaseAddress, XGETPHASEMAP_CONTROL_ADDR_THRESHOLD_DATA, Data);
+}
+
+u32 XGetphasemap_Get_threshold(XGetphasemap *InstancePtr) {
+    u32 Data;
+
+    Xil_AssertNonvoid(InstancePtr != NULL);
+    Xil_AssertNonvoid(InstancePtr->IsReady == XIL_COMPONENT_IS_READY);
+
+    Data = XGetphasemap_ReadReg(InstancePtr->Control_BaseAddress, XGETPHASEMAP_CONTROL_ADDR_THRESHOLD_DATA);
+    return Data;
+}
+
 void XGetphasemap_Set_frame02_offset(XGetphasemap *InstancePtr, u32 Data) {
     Xil_AssertVoid(InstancePtr != NULL);
     Xil_AssertVoid(InstancePtr->IsReady == XIL_COMPONENT_IS_READY);

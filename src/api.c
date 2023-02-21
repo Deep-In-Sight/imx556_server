@@ -89,6 +89,12 @@ void apiEnableAmplitudeScale(int scale_en) {
 	API_EXIT;
 }
 
+int apiSetAmplitudeThreshold(int threshold) {
+	API_ENTER;
+	accelSetAmplitudeThreshold(threshold);
+	API_EXIT;
+}
+
 int16_t apiTest(int val){
 	API_ENTER;
 

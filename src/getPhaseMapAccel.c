@@ -10,7 +10,8 @@
 #include <sys/types.h>
 #include <sys/syscall.h>
 #include <pthread.h>
-#include <stdint.h>
+#include <stdint.h>
+
 #include "xgetphasemap.h"
 #include "profile.h"
 #include "queue.h"
@@ -299,6 +300,12 @@ int accelGetImage(uint16_t **data) {
 
 int accelGetBufferDepth() {
 	return buffer_depth;
+}
+
+int accelSetAmplitudeThreshold(int threshold) {
+	ACCEL_ENTER;
+	XGetphasemap_Set_threshold(&phaseAccel, threshold);
+	ACCEL_EXIT;
 }
 
 /*!

@@ -182,8 +182,8 @@ int changeIntegration(uint32_t time_ns) {
 
 void changeDistanceOffset(int offset_cm) {
 	float range_cm = 300.0/(2*currentFreq)*100;
-	//phase is shifted from 0:2pi to 0:65535
-	int offsetInt = (int) (offset_cm / range_cm * 65535);
+	//phase is shifted from 0:2pi to 0:32767
+	int offsetInt = (int) (offset_cm / range_cm * 32767);
 	uint16_t phaseOffset = (uint16_t)(offsetInt & 0xFFFF);
 	printf("changing phaseoffset to %d\n", phaseOffset);
 	accelSetPhaseOffset(phaseOffset);
