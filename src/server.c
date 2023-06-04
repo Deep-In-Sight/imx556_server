@@ -161,7 +161,16 @@ int startServer(const unsigned int addressOfDevice) {
 		//write data/return
 		if(retSize) {
 			__TIC__(SEND_DATA);
-			send(newsockfd, txBuffer, retSize, MSG_NOSIGNAL);
+			if (retSize == 640*480*2*4) {
+			//hack the raw frame
+				char* Idata = txBuffer + 640*480*2;
+			  char* Qdata = txBuffer + 640*480*2*3;
+			  size_t mapSize = 640*480*2;
+			  send(newsockfd, Idata, mapSize, MSG_NOSIGNAL);
+				send(newsockfd, Qdata, mapSize, MSG_NOSIGNAL);
+			} else {
+				send(newsockfd, txBuffer, retSize, MSG_NOSIGNAL);
+			}
 			__TOC__(SEND_DATA);
 		}
 	}
